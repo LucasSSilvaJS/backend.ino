@@ -111,3 +111,5 @@ setInterval(importarDados, 60000);
 - Projeto monolito, tudo em um único arquivo, ideal para testes e protótipos.
 - Pode ser estendido para usar rotas separadas, controllers e serviços (padrão MVC).
 - Para produção, recomenda-se implementar validação de dados e tratamento de erros mais robusto.
+
+[Confira a API](https://backend-ino.onrender.com/leituras)
