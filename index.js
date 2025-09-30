@@ -51,13 +51,8 @@ app.get("/", (req, res) => {
 app.get("/leituras", async (req, res) => {
   const leituras = await Leitura.find()
   .sort({ created_at: -1 }) // ordena do mais novo pro mais antigo
-  .limit(10);               // pega só os 10 últimos
+  .limit(100);               // pega só os 100 últimos
   res.json(leituras);
-});
-
-app.get("/atualizar", async (req, res) => {
-  await importarDados();
-  res.json({ message: "Dados atualizados!" });
 });
 
 // ====== Servidor ======
