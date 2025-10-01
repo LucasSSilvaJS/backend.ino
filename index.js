@@ -1,11 +1,11 @@
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
-const axios = require("axios");
 
 const app = express();
+app.use(express.json());
 
-// ====== Conexão com MongoDB ======
+// ====== Conexão MongoDB ======
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -13,9 +13,9 @@ mongoose.connect(process.env.MONGO_URI, {
 .then(() => console.log("📦 MongoDB conectado!"))
 .catch(err => console.error("Erro ao conectar Mongo:", err));
 
-// ====== Modelo ======
+// ====== Modelo de Leitura ======
 const LeituraSchema = new mongoose.Schema({
-  created_at: Date,
+  created_at: { type: Date, default: Date.now },
   temperatura: Number,
   umidade: Number,
   iluminacao: Number,
@@ -23,36 +23,61 @@ const LeituraSchema = new mongoose.Schema({
 
 const Leitura = mongoose.model("Leitura", LeituraSchema);
 
-// ====== Função para importar dados do ThingSpeak ======
-async function importarDados() {
+// ====== Thresholds em memória ======
+let thresholds = {
+  temperature_max: 30,
+  humidity_min: 40,
+  light_min: 200
+};
+
+// ====== Receber dados em tempo real ======
+app.post("/api/receive", async (req, res) => {
+  const { field1, field2, field3, created_at } = req.body;
+
   try {
-    const url = `https://api.thingspeak.com/channels/${process.env.THINGSPEAK_CHANNEL_ID}/feeds.json?api_key=${process.env.THINGSPEAK_API_KEY}&results=5`;
-    const response = await axios.get(url);
-
-    for (const feed of response.data.feeds) {
-      await Leitura.create({
-        created_at: feed.created_at,
-        temperatura: feed.field1,
-        umidade: feed.field2,
-        iluminacao: feed.field3,
-      });
-    }
-    console.log("✅ Dados importados com sucesso!");
+    const leitura = await Leitura.create({
+      created_at: created_at ? new Date(created_at) : new Date(),
+      temperatura: field1,
+      umidade: field2,
+      iluminacao: field3
+    });
+    res.json({ success: true, leitura });
   } catch (err) {
-    console.error("Erro ao importar dados:", err.message);
+    console.error("Erro ao salvar leitura:", err);
+    res.status(500).json({ error: "Erro ao salvar leitura" });
   }
-}
-
-// ====== Rotas ======
-app.get("/", (req, res) => {
-  res.send("API Thingspeak + MongoDB rodando 🚀");
 });
 
-app.get("/leituras", async (req, res) => {
-  const leituras = await Leitura.find()
-  .sort({ created_at: -1 }) // ordena do mais novo pro mais antigo
-  .limit(100);               // pega só os 100 últimos
-  res.json(leituras);
+// ====== Dashboard ======
+app.get("/api/dashboard", async (req, res) => {
+  try {
+    const latest = await Leitura.findOne().sort({ created_at: -1 });
+    if (!latest) return res.json({ latest: null, thresholds });
+
+    res.json({
+      latest: {
+        temperature: latest.temperatura,
+        humidity: latest.umidade,
+        light: latest.iluminacao,
+        timestamp: latest.created_at
+      },
+      thresholds
+    });
+  } catch (err) {
+    console.error("Erro ao carregar dashboard:", err);
+    res.status(500).json({ error: "Erro ao carregar dashboard" });
+  }
+});
+
+// ====== Thresholds ======
+app.get("/api/thresholds", (req, res) => {
+  res.json(thresholds);
+});
+
+app.put("/api/thresholds", (req, res) => {
+  const { temperature_max, humidity_min, light_min } = req.body;
+  thresholds = { temperature_max, humidity_min, light_min };
+  res.json(thresholds);
 });
 
 // ====== Servidor ======
@@ -60,6 +85,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
 });
-
-// Importa dados a cada 1 minuto
-setInterval(importarDados, 60000);
